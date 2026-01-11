@@ -9,16 +9,16 @@ const chatMessages = document.getElementById("chat-messages");
 const userInput = document.getElementById("user-input");
 const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
+const modeSelect = document.getElementById("mode-select");
+const universeInput = document.getElementById("universe-input");
+const quickPrompts = document.getElementById("quick-prompts");
+const clearButton = document.getElementById("clear-button");
 
 // Chat state
-let chatHistory = [
-	{
-		role: "assistant",
-		content:
-			"Hello! I'm an LLM chat app powered by Cloudflare Workers AI. How can I help you today?",
-	},
-];
+let chatHistory = [];
 let isProcessing = false;
+
+boot();
 
 // Auto-resize textarea as user types
 userInput.addEventListener("input", function () {
@@ -36,6 +36,8 @@ userInput.addEventListener("keydown", function (e) {
 
 // Send button click handler
 sendButton.addEventListener("click", sendMessage);
+clearButton.addEventListener("click", resetChat);
+quickPrompts.addEventListener("click", onQuickPromptClick);
 
 /**
  * Sends a message to the chat API and processes the response
@@ -68,9 +70,10 @@ async function sendMessage() {
 		// Create new assistant response element
 		const assistantMessageEl = document.createElement("div");
 		assistantMessageEl.className = "message assistant-message";
-		assistantMessageEl.innerHTML = "<p></p>";
+		const assistantTextEl = document.createElement("p");
+		assistantMessageEl.appendChild(assistantTextEl);
 		chatMessages.appendChild(assistantMessageEl);
-		const assistantTextEl = assistantMessageEl.querySelector("p");
+		// assistantTextEl already created
 
 		// Scroll to bottom
 		chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -82,7 +85,8 @@ async function sendMessage() {
 				"Content-Type": "application/json",
 			},
 			body: JSON.stringify({
-				messages: chatHistory,
+				messages: buildMessagesForApi(),
+				casus: buildCasusProfile(),
 			}),
 		});
 
@@ -181,7 +185,7 @@ async function sendMessage() {
 		console.error("Error:", error);
 		addMessageToChat(
 			"assistant",
-			"Sorry, there was an error processing your request.",
+			"Désolé — je n’ai pas pu traiter ta demande. Réessaie dans un instant.",
 		);
 	} finally {
 		// Hide typing indicator
@@ -201,7 +205,9 @@ async function sendMessage() {
 function addMessageToChat(role, content) {
 	const messageEl = document.createElement("div");
 	messageEl.className = `message ${role}-message`;
-	messageEl.innerHTML = `<p>${content}</p>`;
+	const p = document.createElement("p");
+	p.textContent = content;
+	messageEl.appendChild(p);
 	chatMessages.appendChild(messageEl);
 
 	// Scroll to bottom
@@ -227,4 +233,49 @@ function consumeSseEvents(buffer) {
 		events.push(dataLines.join("\n"));
 	}
 	return { events, buffer: normalized };
+}
+
+function boot() {
+	resetChat();
+}
+
+function resetChat() {
+	chatHistory = [];
+	chatMessages.innerHTML = "";
+	addMessageToChat(
+		"assistant",
+		[
+			"Salut, je suis Casus.",
+			"Dis-moi ce que tu veux préparer ou jouer (scénario, PNJ, scènes, tables, règles maison…).",
+			"Astuce: essaie `/roll d20` ou clique une suggestion.",
+		].join("\n"),
+	);
+	userInput.value = "";
+	userInput.style.height = "auto";
+	userInput.focus();
+}
+
+function onQuickPromptClick(e) {
+	const btn = e.target.closest("button[data-prompt]");
+	if (!btn) return;
+	const prompt = btn.getAttribute("data-prompt") || "";
+	if (!prompt) return;
+	userInput.value = prompt;
+	userInput.dispatchEvent(new Event("input"));
+	sendMessage();
+}
+
+function buildCasusProfile() {
+	const mode = modeSelect && modeSelect.value ? modeSelect.value : "mj";
+	const univers = universeInput ? universeInput.value.trim() : "";
+
+	return {
+		mode: mode === "joueur" ? "joueur" : "mj",
+		univers: univers || undefined,
+	};
+}
+
+function buildMessagesForApi() {
+	// On envoie uniquement l'historique utile (user/assistant) — le Worker injecte le persona Casus
+	return chatHistory.slice();
 }
